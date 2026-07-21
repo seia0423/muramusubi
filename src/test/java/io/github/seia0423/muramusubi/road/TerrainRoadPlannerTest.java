@@ -59,4 +59,22 @@ class TerrainRoadPlannerTest {
         assertEquals(new GridPoint(-4, -4), result.get().start());
         assertEquals(new GridPoint(-12, -4), result.get().end());
     }
+
+    @Test
+    void incrementalSearchCanAdvanceAcrossMultipleTicks() {
+        TerrainRoadPlanner.Search search = planner.begin(
+                new GridPoint(0, 0),
+                new GridPoint(64, 0),
+                (x, z) -> new TerrainSample(64, false),
+                1_000);
+
+        assertEquals(TerrainRoadPlanner.SearchStatus.RUNNING, search.advance(1));
+        while (search.status() == TerrainRoadPlanner.SearchStatus.RUNNING) {
+            search.advance(2);
+        }
+
+        assertEquals(TerrainRoadPlanner.SearchStatus.FOUND, search.status());
+        assertTrue(search.result().isPresent());
+        assertTrue(search.visitedSteps() > 1);
+    }
 }

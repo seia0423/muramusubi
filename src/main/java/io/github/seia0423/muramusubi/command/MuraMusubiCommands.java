@@ -11,6 +11,7 @@ import io.github.seia0423.muramusubi.road.RoadNetworkPlan;
 import io.github.seia0423.muramusubi.road.RoadPlan;
 import io.github.seia0423.muramusubi.road.TerrainRoadPlanner;
 import io.github.seia0423.muramusubi.world.MinecraftTerrainSampler;
+import io.github.seia0423.muramusubi.world.AutoRoadService;
 import io.github.seia0423.muramusubi.world.RoadBuildService;
 import io.github.seia0423.muramusubi.world.VillageLocator;
 import java.util.Optional;
@@ -91,6 +92,7 @@ public final class MuraMusubiCommands {
                         + ", 1tick上限=" + MuraMusubiConfig.MAX_BLOCKS_PER_TICK.getAsInt()
                         + ", 発見済み村=" + savedData.villages().size()
                         + ", 接続済み=" + savedData.connections().size()
+                        + ", 自動探索中=" + AutoRoadService.pendingSearchCount()
                         + ", 生成中道路=" + savedData.pendingRoadCount()
                         + ", 敷設待ち=" + savedData.queuedBlockCount()), false);
         return 1;

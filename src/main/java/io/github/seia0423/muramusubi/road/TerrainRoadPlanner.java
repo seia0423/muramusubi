@@ -29,35 +29,98 @@ public final class TerrainRoadPlanner {
 
     public Optional<RoadPlan> plan(GridPoint requestedStart, GridPoint requestedEnd,
             TerrainSampler terrainSampler, int maxSteps) {
-        if (maxSteps < 1) {
-            throw new IllegalArgumentException("maxStepsは1以上である必要があります");
+        Search search = begin(requestedStart, requestedEnd, terrainSampler, maxSteps);
+        search.advance(maxSteps);
+        return search.result();
+    }
+
+    public Search begin(GridPoint requestedStart, GridPoint requestedEnd,
+            TerrainSampler terrainSampler, int maxSteps) {
+        return new Search(requestedStart, requestedEnd, terrainSampler, maxSteps);
+    }
+
+    public enum SearchStatus {
+        RUNNING,
+        FOUND,
+        FAILED
+    }
+
+    /** 複数ティックに分けて進められるA*探索状態です。 */
+    public static final class Search {
+        private final GridPoint start;
+        private final GridPoint end;
+        private final TerrainSampler terrainSampler;
+        private final int maxSteps;
+        private final Map<Long, TerrainSample> terrainCache = new HashMap<>();
+        private final PriorityQueue<Node> open = new PriorityQueue<>(Comparator.comparingDouble(Node::fScore));
+        private final Map<Long, Double> bestScores = new HashMap<>();
+        private final Set<Long> closed = new HashSet<>();
+        private SearchStatus status = SearchStatus.RUNNING;
+        private RoadPlan result;
+        private int visitedSteps;
+
+        private Search(GridPoint requestedStart, GridPoint requestedEnd,
+                TerrainSampler terrainSampler, int maxSteps) {
+            if (maxSteps < 1) {
+                throw new IllegalArgumentException("maxStepsは1以上である必要があります");
+            }
+            this.start = requestedStart.snappedTo(GRID_SIZE);
+            this.end = requestedEnd.snappedTo(GRID_SIZE);
+            this.terrainSampler = terrainSampler;
+            this.maxSteps = maxSteps;
+
+            int startY = sample(start.x(), start.z()).surfaceY();
+            Node startNode = new Node(start.x(), startY, start.z(), null, 0.0,
+                    heuristic(start.x(), start.z(), end.x(), end.z()));
+            open.add(startNode);
+            bestScores.put(hash(start.x(), start.z()), 0.0);
         }
 
-        Map<Long, TerrainSample> terrainCache = new HashMap<>();
-        GridPoint start = snapToGrid(requestedStart);
-        GridPoint end = snapToGrid(requestedEnd);
-        int startY = sample(terrainSampler, terrainCache, start.x(), start.z()).surfaceY();
-        int endY = sample(terrainSampler, terrainCache, end.x(), end.z()).surfaceY();
-
-        PriorityQueue<Node> open = new PriorityQueue<>(Comparator.comparingDouble(Node::fScore));
-        Map<Long, Double> bestScores = new HashMap<>();
-        Set<Long> closed = new HashSet<>();
-        Node startNode = new Node(start.x(), startY, start.z(), null, 0.0,
-                heuristic(start.x(), start.z(), end.x(), end.z()));
-        open.add(startNode);
-        bestScores.put(hash(start.x(), start.z()), 0.0);
-
-        int steps = 0;
-        while (!open.isEmpty() && steps++ < maxSteps) {
-            Node current = open.poll();
-            long currentKey = hash(current.x(), current.z());
-            if (!closed.add(currentKey)) {
-                continue;
+        public SearchStatus advance(int stepBudget) {
+            if (stepBudget < 1) {
+                throw new IllegalArgumentException("stepBudgetは1以上である必要があります");
             }
-            if (current.x() == end.x() && current.z() == end.z()) {
-                return Optional.of(reconstruct(start, end, current));
+            if (status != SearchStatus.RUNNING) {
+                return status;
             }
 
+            int advanced = 0;
+            while (!open.isEmpty() && visitedSteps < maxSteps && advanced < stepBudget) {
+                Node current = open.poll();
+                visitedSteps++;
+                advanced++;
+                long currentKey = hash(current.x(), current.z());
+                if (!closed.add(currentKey)) {
+                    continue;
+                }
+                if (current.x() == end.x() && current.z() == end.z()) {
+                    result = reconstruct(start, end, current);
+                    status = SearchStatus.FOUND;
+                    return status;
+                }
+
+                visitNeighbors(current);
+            }
+
+            if (open.isEmpty() || visitedSteps >= maxSteps) {
+                status = SearchStatus.FAILED;
+            }
+            return status;
+        }
+
+        public SearchStatus status() {
+            return status;
+        }
+
+        public Optional<RoadPlan> result() {
+            return Optional.ofNullable(result);
+        }
+
+        public int visitedSteps() {
+            return visitedSteps;
+        }
+
+        private void visitNeighbors(Node current) {
             for (int[] offset : NEIGHBOR_OFFSETS) {
                 int nextX = current.x() + offset[0];
                 int nextZ = current.z() + offset[1];
@@ -66,14 +129,13 @@ public final class TerrainRoadPlanner {
                     continue;
                 }
 
-                TerrainSample nextTerrain = sample(terrainSampler, terrainCache, nextX, nextZ);
+                TerrainSample nextTerrain = sample(nextX, nextZ);
                 int elevation = Math.abs(nextTerrain.surfaceY() - current.y());
                 if (elevation > MAX_STEP_ELEVATION) {
                     continue;
                 }
 
-                int stability = terrainStability(nextX, nextZ, nextTerrain.surfaceY(),
-                        terrainSampler, terrainCache);
+                int stability = terrainStability(nextX, nextZ, nextTerrain.surfaceY());
                 if (stability > MAX_STABILITY_COST) {
                     continue;
                 }
@@ -96,7 +158,22 @@ public final class TerrainRoadPlanner {
             }
         }
 
-        return Optional.empty();
+        private int terrainStability(int x, int z, int y) {
+            int cost = 0;
+            int[][] offsets = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+            for (int[] offset : offsets) {
+                cost += Math.abs(y - sample(x + offset[0], z + offset[1]).surfaceY());
+                if (cost > MAX_STABILITY_COST) {
+                    return cost;
+                }
+            }
+            return cost;
+        }
+
+        private TerrainSample sample(int x, int z) {
+            return terrainCache.computeIfAbsent(hash(x, z),
+                    ignored -> terrainSampler.sample(x, z));
+        }
     }
 
     private static RoadPlan reconstruct(GridPoint start, GridPoint end, Node endNode) {
@@ -116,31 +193,10 @@ public final class TerrainRoadPlanner {
         return new RoadPlan(start, end, centerLine);
     }
 
-    private static int terrainStability(int x, int z, int y, TerrainSampler sampler,
-            Map<Long, TerrainSample> cache) {
-        int cost = 0;
-        int[][] offsets = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
-        for (int[] offset : offsets) {
-            cost += Math.abs(y - sample(sampler, cache, x + offset[0], z + offset[1]).surfaceY());
-            if (cost > MAX_STABILITY_COST) {
-                return cost;
-            }
-        }
-        return cost;
-    }
-
-    private static TerrainSample sample(TerrainSampler sampler, Map<Long, TerrainSample> cache, int x, int z) {
-        return cache.computeIfAbsent(hash(x, z), ignored -> sampler.sample(x, z));
-    }
-
     private static double heuristic(int x, int z, int endX, int endZ) {
         int dx = Math.abs(x - endX);
         int dz = Math.abs(z - endZ);
         return (dx + dz - 0.6 * Math.min(dx, dz)) * 30.0;
-    }
-
-    private static GridPoint snapToGrid(GridPoint point) {
-        return point.snappedTo(GRID_SIZE);
     }
 
     private static long hash(int x, int z) {

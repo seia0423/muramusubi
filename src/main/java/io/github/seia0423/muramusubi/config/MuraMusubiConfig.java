@@ -29,6 +29,14 @@ public final class MuraMusubiConfig {
             .comment("connect-networkを1回実行したときに新しく計画する道路本数の上限")
             .defineInRange("maxNetworkRoadsPerCommand", 4, 1, 32);
 
+    public static final ModConfigSpec.BooleanValue AUTOMATIC_ROAD_GENERATION = BUILDER
+            .comment("読み込まれた村を自動発見し、最寄りの未接続村へ道路を生成する")
+            .define("automaticRoadGeneration", true);
+
+    public static final ModConfigSpec.IntValue AUTO_PATHFINDING_STEPS_PER_TICK = BUILDER
+            .comment("自動道路のA*探索を1ティックに進める地点数")
+            .defineInRange("autoPathfindingStepsPerTick", 256, 1, 10_000);
+
     public static final ModConfigSpec SPEC = BUILDER.build();
 
     private MuraMusubiConfig() {
