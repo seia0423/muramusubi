@@ -37,6 +37,22 @@ public final class MuraMusubiConfig {
             .comment("自動道路のA*探索を1ティックに進める地点数")
             .defineInRange("autoPathfindingStepsPerTick", 256, 1, 10_000);
 
+    public static final ModConfigSpec.BooleanValue ALLOW_ARTIFICIAL_ROADS = BUILDER
+            .comment("石・泥レンガ系の人工道を生成候補に含める")
+            .define("allowArtificialRoads", true);
+
+    public static final ModConfigSpec.BooleanValue ALLOW_NATURAL_ROADS = BUILDER
+            .comment("土・丸石系の自然道を生成候補に含める")
+            .define("allowNaturalRoads", true);
+
+    public static final ModConfigSpec.BooleanValue PLACE_ROAD_DECORATIONS = BUILDER
+            .comment("人工道に街灯、自然道に松明付き道標を設置する")
+            .define("placeRoadDecorations", true);
+
+    public static final ModConfigSpec.IntValue DECORATION_SPACING = BUILDER
+            .comment("街灯・道標のおおよその間隔（中心線ブロック数）")
+            .defineInRange("decorationSpacing", 59, 12, 256);
+
     public static final ModConfigSpec SPEC = BUILDER.build();
 
     private MuraMusubiConfig() {

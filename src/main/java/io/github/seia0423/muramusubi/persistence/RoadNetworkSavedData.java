@@ -58,11 +58,11 @@ public final class RoadNetworkSavedData extends SavedData {
         return added;
     }
 
-    public boolean queueRoad(RoadConnection connection, List<GridPoint> positions) {
+    public boolean queueRoad(RoadConnection connection, List<RoadBuildOperation> operations) {
         if (!connections.add(connection)) {
             return false;
         }
-        buildTasks.add(new RoadBuildTaskData(connection, positions));
+        buildTasks.add(new RoadBuildTaskData(connection, operations));
         setDirty();
         return true;
     }
@@ -83,8 +83,8 @@ public final class RoadNetworkSavedData extends SavedData {
     public Optional<BuildStep> pollNextBuildStep() {
         while (!buildTasks.isEmpty()) {
             RoadBuildTaskData task = buildTasks.getFirst();
-            GridPoint point = task.pollFirst();
-            if (point == null) {
+            RoadBuildOperation operation = task.pollFirst();
+            if (operation == null) {
                 buildTasks.removeFirst();
                 setDirty();
                 continue;
@@ -96,7 +96,7 @@ public final class RoadNetworkSavedData extends SavedData {
                 buildTasks.removeFirst();
             }
             setDirty();
-            return Optional.of(new BuildStep(point, Optional.ofNullable(completedConnection)));
+            return Optional.of(new BuildStep(operation, Optional.ofNullable(completedConnection)));
         }
         return Optional.empty();
     }
@@ -121,6 +121,6 @@ public final class RoadNetworkSavedData extends SavedData {
         return buildTasks.size();
     }
 
-    public record BuildStep(GridPoint point, Optional<RoadConnection> completedConnection) {
+    public record BuildStep(RoadBuildOperation operation, Optional<RoadConnection> completedConnection) {
     }
 }

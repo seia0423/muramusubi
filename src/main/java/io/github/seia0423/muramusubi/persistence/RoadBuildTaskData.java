@@ -12,35 +12,49 @@ import java.util.List;
 public final class RoadBuildTaskData {
     public static final Codec<RoadBuildTaskData> CODEC = RecordCodecBuilder.create(instance -> instance.group(
             RoadConnection.CODEC.fieldOf("connection").forGetter(RoadBuildTaskData::connection),
-            GridPoint.CODEC.listOf().fieldOf("remaining_positions")
-                    .forGetter(RoadBuildTaskData::remainingPositions)
-    ).apply(instance, RoadBuildTaskData::new));
+            RoadBuildOperation.CODEC.listOf().optionalFieldOf("remaining_operations", List.of())
+                    .forGetter(RoadBuildTaskData::remainingOperations),
+            GridPoint.CODEC.listOf().optionalFieldOf("remaining_positions", List.of())
+                    .forGetter(task -> List.of())
+    ).apply(instance, RoadBuildTaskData::decode));
 
     private final RoadConnection connection;
-    private final Deque<GridPoint> remainingPositions;
+    private final Deque<RoadBuildOperation> remainingOperations;
 
-    public RoadBuildTaskData(RoadConnection connection, List<GridPoint> remainingPositions) {
+    public RoadBuildTaskData(RoadConnection connection, List<RoadBuildOperation> remainingOperations) {
         this.connection = connection;
-        this.remainingPositions = new ArrayDeque<>(remainingPositions);
+        this.remainingOperations = new ArrayDeque<>(remainingOperations);
+    }
+
+    private static RoadBuildTaskData decode(RoadConnection connection,
+            List<RoadBuildOperation> operations, List<GridPoint> legacyPositions) {
+        if (!operations.isEmpty()) {
+            return new RoadBuildTaskData(connection, operations);
+        }
+        List<RoadBuildOperation> migrated = legacyPositions.stream()
+                .map(point -> new RoadBuildOperation(
+                        point, RoadBuildOperation.Kind.ROAD_ARTIFICIAL, 0, 1))
+                .toList();
+        return new RoadBuildTaskData(connection, migrated);
     }
 
     public RoadConnection connection() {
         return connection;
     }
 
-    public List<GridPoint> remainingPositions() {
-        return List.copyOf(remainingPositions);
+    public List<RoadBuildOperation> remainingOperations() {
+        return List.copyOf(remainingOperations);
     }
 
-    public GridPoint pollFirst() {
-        return remainingPositions.pollFirst();
+    public RoadBuildOperation pollFirst() {
+        return remainingOperations.pollFirst();
     }
 
     public boolean isComplete() {
-        return remainingPositions.isEmpty();
+        return remainingOperations.isEmpty();
     }
 
     public int remainingBlockCount() {
-        return remainingPositions.size();
+        return remainingOperations.size();
     }
 }

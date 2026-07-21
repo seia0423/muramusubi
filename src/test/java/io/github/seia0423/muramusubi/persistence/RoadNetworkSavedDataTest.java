@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.google.gson.JsonParser;
 import com.mojang.serialization.JsonOps;
 import io.github.seia0423.muramusubi.road.GridPoint;
 import io.github.seia0423.muramusubi.road.RoadConnection;
@@ -19,8 +20,8 @@ class RoadNetworkSavedDataTest {
         RoadConnection reverse = RoadConnection.between(
                 new GridPoint(100, 40), new GridPoint(0, 0));
 
-        assertTrue(data.queueRoad(forward, List.of(new GridPoint(4, 0))));
-        assertFalse(data.queueRoad(reverse, List.of(new GridPoint(8, 0))));
+        assertTrue(data.queueRoad(forward, List.of(roadAt(4, 0))));
+        assertFalse(data.queueRoad(reverse, List.of(roadAt(8, 0))));
         assertEquals(1, data.connections().size());
     }
 
@@ -33,9 +34,9 @@ class RoadNetworkSavedDataTest {
         original.rememberVillage(first);
         original.rememberVillage(second);
         original.queueRoad(connection, List.of(
-                new GridPoint(0, 0),
-                new GridPoint(1, 0),
-                new GridPoint(2, 0)));
+                roadAt(0, 0),
+                new RoadBuildOperation(new GridPoint(1, 0), RoadBuildOperation.Kind.FENCE, 1, 0),
+                new RoadBuildOperation(new GridPoint(2, 0), RoadBuildOperation.Kind.HANGING_LANTERN, 2, 0)));
         original.pollNextBuildStep();
 
         var encoded = RoadNetworkSavedData.CODEC.encodeStart(JsonOps.INSTANCE, original).getOrThrow();
@@ -54,7 +55,7 @@ class RoadNetworkSavedDataTest {
         RoadNetworkSavedData data = new RoadNetworkSavedData();
         RoadConnection connection = RoadConnection.between(
                 new GridPoint(0, 0), new GridPoint(16, 0));
-        data.queueRoad(connection, List.of(new GridPoint(8, 0)));
+        data.queueRoad(connection, List.of(roadAt(8, 0)));
 
         var step = data.pollNextBuildStep();
 
@@ -69,11 +70,40 @@ class RoadNetworkSavedDataTest {
         RoadNetworkSavedData data = new RoadNetworkSavedData();
         RoadConnection connection = RoadConnection.between(
                 new GridPoint(0, 0), new GridPoint(16, 0));
-        data.queueRoad(connection, List.of(new GridPoint(8, 0), new GridPoint(9, 0)));
+        data.queueRoad(connection, List.of(roadAt(8, 0), roadAt(9, 0)));
 
         assertTrue(data.forgetConnection(connection));
         assertFalse(data.hasConnection(connection));
         assertEquals(0, data.pendingRoadCount());
         assertEquals(0, data.queuedBlockCount());
+    }
+
+    @Test
+    void legacyPositionQueueMigratesToArtificialRoadOperations() {
+        var legacyJson = JsonParser.parseString("""
+                {
+                  "connection": {
+                    "first": {"x": 0, "z": 0},
+                    "second": {"x": 16, "z": 0}
+                  },
+                  "remaining_positions": [
+                    {"x": 8, "z": 0}
+                  ]
+                }
+                """);
+
+        RoadBuildTaskData restored = RoadBuildTaskData.CODEC
+                .parse(JsonOps.INSTANCE, legacyJson)
+                .getOrThrow();
+        RoadBuildOperation operation = restored.remainingOperations().getFirst();
+
+        assertEquals(new GridPoint(8, 0), operation.point());
+        assertEquals(RoadBuildOperation.Kind.ROAD_ARTIFICIAL, operation.kind());
+        assertEquals(1, operation.palette());
+    }
+
+    private static RoadBuildOperation roadAt(int x, int z) {
+        return new RoadBuildOperation(
+                new GridPoint(x, z), RoadBuildOperation.Kind.ROAD_ARTIFICIAL, 0, 1);
     }
 }

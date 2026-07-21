@@ -89,6 +89,9 @@ public final class MuraMusubiCommands {
         source.sendSuccess(() -> Component.literal(
                 "Mura Musubi: 最大接続距離=" + MuraMusubiConfig.MAX_CONNECTION_DISTANCE.getAsInt()
                         + ", 道幅=" + MuraMusubiConfig.ROAD_WIDTH.getAsInt()
+                        + ", 人工道=" + MuraMusubiConfig.ALLOW_ARTIFICIAL_ROADS.getAsBoolean()
+                        + ", 自然道=" + MuraMusubiConfig.ALLOW_NATURAL_ROADS.getAsBoolean()
+                        + ", 装飾=" + MuraMusubiConfig.PLACE_ROAD_DECORATIONS.getAsBoolean()
                         + ", 1tick上限=" + MuraMusubiConfig.MAX_BLOCKS_PER_TICK.getAsInt()
                         + ", 発見済み村=" + savedData.villages().size()
                         + ", 接続済み=" + savedData.connections().size()
@@ -236,6 +239,10 @@ public final class MuraMusubiCommands {
                 source.getLevel(), roadPlan, MuraMusubiConfig.ROAD_WIDTH.getAsInt());
         if (enqueueResult.status() == RoadBuildService.EnqueueStatus.DUPLICATE) {
             source.sendFailure(Component.literal("この2地点は既に接続済み、または生成待ちです"));
+            return 0;
+        }
+        if (enqueueResult.status() == RoadBuildService.EnqueueStatus.DISABLED) {
+            source.sendFailure(Component.literal("設定で人工道と自然道が両方無効になっています"));
             return 0;
         }
         source.sendSuccess(() -> Component.literal(

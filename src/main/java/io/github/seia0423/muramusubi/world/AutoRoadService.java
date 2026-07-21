@@ -151,8 +151,13 @@ public final class AutoRoadService {
                     pending.level(),
                     pending.search().result().orElseThrow(),
                     MuraMusubiConfig.ROAD_WIDTH.getAsInt());
-            MuraMusubi.LOGGER.info("村間道路を自動生成キューへ追加しました: {}（{}ブロック）",
-                    pending.connection(), enqueueResult.blockCount());
+            if (enqueueResult.status() == RoadBuildService.EnqueueStatus.QUEUED) {
+                MuraMusubi.LOGGER.info("村間道路を自動生成キューへ追加しました: {}（{}ブロック）",
+                        pending.connection(), enqueueResult.blockCount());
+            } else if (enqueueResult.status() == RoadBuildService.EnqueueStatus.DISABLED) {
+                MuraMusubi.LOGGER.warn("人工道と自然道が両方無効なため、自動道路を生成しません: {}",
+                        pending.connection());
+            }
         } else {
             MuraMusubi.LOGGER.warn("村間道路の自動探索に失敗しました: {}", pending.connection());
         }
