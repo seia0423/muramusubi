@@ -1,0 +1,79 @@
+package io.github.seia0423.muramusubi.persistence;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.mojang.serialization.JsonOps;
+import io.github.seia0423.muramusubi.road.GridPoint;
+import io.github.seia0423.muramusubi.road.RoadConnection;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+
+class RoadNetworkSavedDataTest {
+    @Test
+    void canonicalConnectionPreventsReverseDuplicate() {
+        RoadNetworkSavedData data = new RoadNetworkSavedData();
+        RoadConnection forward = RoadConnection.between(
+                new GridPoint(0, 0), new GridPoint(100, 40));
+        RoadConnection reverse = RoadConnection.between(
+                new GridPoint(100, 40), new GridPoint(0, 0));
+
+        assertTrue(data.queueRoad(forward, List.of(new GridPoint(4, 0))));
+        assertFalse(data.queueRoad(reverse, List.of(new GridPoint(8, 0))));
+        assertEquals(1, data.connections().size());
+    }
+
+    @Test
+    void codecPreservesVillagesConnectionsAndRemainingQueue() {
+        RoadNetworkSavedData original = new RoadNetworkSavedData();
+        GridPoint first = new GridPoint(-24, 48);
+        GridPoint second = new GridPoint(120, 96);
+        RoadConnection connection = RoadConnection.between(first, second);
+        original.rememberVillage(first);
+        original.rememberVillage(second);
+        original.queueRoad(connection, List.of(
+                new GridPoint(0, 0),
+                new GridPoint(1, 0),
+                new GridPoint(2, 0)));
+        original.pollNextBuildStep();
+
+        var encoded = RoadNetworkSavedData.CODEC.encodeStart(JsonOps.INSTANCE, original).getOrThrow();
+        RoadNetworkSavedData restored = RoadNetworkSavedData.CODEC
+                .parse(JsonOps.INSTANCE, encoded)
+                .getOrThrow();
+
+        assertEquals(List.of(first, second), restored.villages());
+        assertEquals(List.of(connection), restored.connections());
+        assertEquals(2, restored.queuedBlockCount());
+        assertEquals(1, restored.pendingRoadCount());
+    }
+
+    @Test
+    void completedTaskLeavesConnectionAsDuplicateGuard() {
+        RoadNetworkSavedData data = new RoadNetworkSavedData();
+        RoadConnection connection = RoadConnection.between(
+                new GridPoint(0, 0), new GridPoint(16, 0));
+        data.queueRoad(connection, List.of(new GridPoint(8, 0)));
+
+        var step = data.pollNextBuildStep();
+
+        assertTrue(step.isPresent());
+        assertEquals(connection, step.get().completedConnection().orElseThrow());
+        assertEquals(0, data.pendingRoadCount());
+        assertTrue(data.hasConnection(connection));
+    }
+
+    @Test
+    void forgettingConnectionAlsoCancelsPendingTask() {
+        RoadNetworkSavedData data = new RoadNetworkSavedData();
+        RoadConnection connection = RoadConnection.between(
+                new GridPoint(0, 0), new GridPoint(16, 0));
+        data.queueRoad(connection, List.of(new GridPoint(8, 0), new GridPoint(9, 0)));
+
+        assertTrue(data.forgetConnection(connection));
+        assertFalse(data.hasConnection(connection));
+        assertEquals(0, data.pendingRoadCount());
+        assertEquals(0, data.queuedBlockCount());
+    }
+}

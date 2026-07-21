@@ -18,7 +18,7 @@ import java.util.Set;
  * 再構成した実装です。元コードはCC0-1.0で公開されています。</p>
  */
 public final class TerrainRoadPlanner {
-    static final int GRID_SIZE = 4;
+    public static final int GRID_SIZE = 4;
     private static final int MAX_STEP_ELEVATION = 3;
     private static final int MAX_STABILITY_COST = 2;
     private static final int[][] NEIGHBOR_OFFSETS = {
@@ -140,9 +140,7 @@ public final class TerrainRoadPlanner {
     }
 
     private static GridPoint snapToGrid(GridPoint point) {
-        return new GridPoint(
-                Math.floorDiv(point.x(), GRID_SIZE) * GRID_SIZE,
-                Math.floorDiv(point.z(), GRID_SIZE) * GRID_SIZE);
+        return point.snappedTo(GRID_SIZE);
     }
 
     private static long hash(int x, int z) {

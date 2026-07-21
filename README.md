@@ -14,6 +14,9 @@ Minecraft 26.2 / NeoForge 26.2向けに、村と村を地形に沿った道で�
 - 水面にオーク板材を置く最小限の橋
 - 村中心付近を変更しないための始点・終点余白
 - 1ティック当たりの上限を守る道路敷設キュー
+- 発見済み村、接続済みペア、敷設途中キューのワールド保存
+- サーバー再起動後の道路敷設再開と、同じ村ペアの重複生成防止
+- 保存済みの村を最小全域木で結ぶ道路ネットワーク計画
 - Minecraft API非依存の経路探索単体テスト
 
 ## 必要環境
@@ -31,12 +34,18 @@ Minecraft 26.2 / NeoForge 26.2向けに、村と村を地形に沿った道で�
 /muramusubi plan <fromX> <fromZ> <toX> <toZ>
 /muramusubi connect <fromX> <fromZ> <toX> <toZ>
 /muramusubi connect-nearest
+/muramusubi connect-network
+/muramusubi roads
+/muramusubi forget <fromX> <fromZ> <toX> <toZ>
 ```
 
-- `status`: 設定値と敷設待ちブロック数を表示します。
+- `status`: 設定値、発見済み村、接続数、生成中道路、敷設待ちブロック数を表示します。
 - `plan`: 指定座標間の地形対応経路だけを計算し、ワールドを変更しません。
 - `connect`: 指定座標間の道路を計算し、敷設キューへ追加します。
 - `connect-nearest`: 現在地の周辺から接続可能な2つの村を検出し、道路を敷設します。
+- `connect-network`: これまでに発見・保存された村を最小全域木で結びます。
+- `roads`: 保存済み接続を最大10本まで表示します。
+- `forget`: 接続記録と生成待ちを解除します。設置済み道路ブロックは削除しません。
 
 `connect-nearest` で目的の組み合わせが見つからない場合は、2つの村の座標を確認して `connect` を使用できます。
 
@@ -49,6 +58,7 @@ Minecraft 26.2 / NeoForge 26.2向けに、村と村を地形に沿った道で�
 - `maxBlocksPerTick`: 1ティックに変更するブロック数
 - `maxPathfindingSteps`: A*探索地点数の上限
 - `endpointClearance`: 村中心付近で道路を置かない距離
+- `maxNetworkRoadsPerCommand`: 1回のネットワーク生成で追加する道路本数
 
 ## 開発用コマンド
 
@@ -69,7 +79,8 @@ Linux / macOS:
 ## 現在の制限
 
 - 村の発見時に自動生成する機能はまだなく、管理コマンドで開始します。
-- 敷設キューと接続済み道路は再起動後に復元されません。
+- `forget` は記録と生成待ちだけを解除し、設置済み道路のブロックを元に戻しません。
+- `connect-network` の対象は、先に `connect-nearest` で発見・保存された村です。
 - 元MODの街灯、標識、ウェイポイント、複数の装飾デザインはまだ移植していません。
 - 大規模な橋、トンネル、他の地形生成MODとの互換性は未検証です。
 

@@ -25,6 +25,10 @@ public final class MuraMusubiConfig {
             .comment("村の建物を壊さないため、道路の始点・終点から敷設しない距離")
             .defineInRange("endpointClearance", 24, 0, 128);
 
+    public static final ModConfigSpec.IntValue MAX_NETWORK_ROADS_PER_COMMAND = BUILDER
+            .comment("connect-networkを1回実行したときに新しく計画する道路本数の上限")
+            .defineInRange("maxNetworkRoadsPerCommand", 4, 1, 32);
+
     public static final ModConfigSpec SPEC = BUILDER.build();
 
     private MuraMusubiConfig() {

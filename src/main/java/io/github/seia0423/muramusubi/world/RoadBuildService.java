@@ -2,7 +2,9 @@ package io.github.seia0423.muramusubi.world;
 
 import io.github.seia0423.muramusubi.MuraMusubi;
 import io.github.seia0423.muramusubi.config.MuraMusubiConfig;
+import io.github.seia0423.muramusubi.persistence.RoadNetworkSavedData;
 import io.github.seia0423.muramusubi.road.GridPoint;
+import io.github.seia0423.muramusubi.road.RoadConnection;
 import io.github.seia0423.muramusubi.road.RoadPlan;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -15,49 +17,50 @@ import net.minecraft.tags.BlockTags;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.levelgen.Heightmap;
-import net.neoforged.neoforge.event.server.ServerStoppedEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 /** 道路ブロックの変更をサーバーティックごとに少量ずつ実行します。 */
 public final class RoadBuildService {
-    private static final Deque<RoadBuildTask> TASKS = new ArrayDeque<>();
-
     private RoadBuildService() {
     }
 
-    public static int enqueue(ServerLevel level, RoadPlan plan, int width) {
+    public static EnqueueResult enqueue(ServerLevel level, RoadPlan plan, int width) {
+        RoadConnection connection = RoadConnection.between(plan.start(), plan.end());
+        RoadNetworkSavedData savedData = RoadNetworkSavedData.get(level);
+        if (savedData.hasConnection(connection)) {
+            return new EnqueueResult(EnqueueStatus.DUPLICATE, 0);
+        }
+
         int configuredClearance = MuraMusubiConfig.ENDPOINT_CLEARANCE.getAsInt();
         int usableClearance = Math.min(configuredClearance, Math.max(0, (plan.centerLine().size() - 1) / 4));
         int endIndex = plan.centerLine().size() - usableClearance;
         List<GridPoint> buildableCenterLine = plan.centerLine().subList(usableClearance, endIndex);
         Deque<GridPoint> positions = expandWidth(buildableCenterLine, width);
-        int blockCount = positions.size();
-        TASKS.addLast(new RoadBuildTask(level, positions));
-        return blockCount;
-    }
-
-    public static int queuedBlocks() {
-        return TASKS.stream().mapToInt(task -> task.positions().size()).sum();
+        List<GridPoint> persistedPositions = List.copyOf(positions);
+        if (!savedData.queueRoad(connection, persistedPositions)) {
+            return new EnqueueResult(EnqueueStatus.DUPLICATE, 0);
+        }
+        return new EnqueueResult(EnqueueStatus.QUEUED, persistedPositions.size());
     }
 
     public static void tick(ServerTickEvent.Post event) {
         int budget = MuraMusubiConfig.MAX_BLOCKS_PER_TICK.getAsInt();
-        while (budget > 0 && !TASKS.isEmpty()) {
-            RoadBuildTask task = TASKS.getFirst();
-            GridPoint point = task.positions().pollFirst();
-            if (point != null) {
-                placeRoadBlock(task.level(), point);
+        for (ServerLevel level : event.getServer().getAllLevels()) {
+            RoadNetworkSavedData savedData = RoadNetworkSavedData.get(level);
+            while (budget > 0) {
+                var buildStep = savedData.pollNextBuildStep();
+                if (buildStep.isEmpty()) {
+                    break;
+                }
+                placeRoadBlock(level, buildStep.get().point());
+                buildStep.get().completedConnection().ifPresent(connection ->
+                        MuraMusubi.LOGGER.info("道路の敷設が完了しました: {}", connection));
                 budget--;
             }
-            if (task.positions().isEmpty()) {
-                TASKS.removeFirst();
-                MuraMusubi.LOGGER.info("道路の敷設が完了しました");
+            if (budget == 0) {
+                return;
             }
         }
-    }
-
-    public static void clear(ServerStoppedEvent event) {
-        TASKS.clear();
     }
 
     private static Deque<GridPoint> expandWidth(List<GridPoint> centerLine, int width) {
@@ -147,6 +150,11 @@ public final class RoadBuildService {
         }
     }
 
-    private record RoadBuildTask(ServerLevel level, Deque<GridPoint> positions) {
+    public enum EnqueueStatus {
+        QUEUED,
+        DUPLICATE
+    }
+
+    public record EnqueueResult(EnqueueStatus status, int blockCount) {
     }
 }

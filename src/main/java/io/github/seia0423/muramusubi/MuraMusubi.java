@@ -20,7 +20,6 @@ public final class MuraMusubi {
         modContainer.registerConfig(ModConfig.Type.COMMON, MuraMusubiConfig.SPEC);
         NeoForge.EVENT_BUS.addListener(MuraMusubiCommands::register);
         NeoForge.EVENT_BUS.addListener(RoadBuildService::tick);
-        NeoForge.EVENT_BUS.addListener(RoadBuildService::clear);
         LOGGER.info("Mura Musubi を読み込みました");
     }
 }
