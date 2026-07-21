@@ -53,6 +53,22 @@ public final class MuraMusubiConfig {
             .comment("街灯・道標のおおよその間隔（中心線ブロック数）")
             .defineInRange("decorationSpacing", 59, 12, 256);
 
+    public static final ModConfigSpec.BooleanValue SMOOTH_ROAD_SLOPES = BUILDER
+            .comment("1ブロック段差に階段またはハーフブロックを置く")
+            .define("smoothRoadSlopes", true);
+
+    public static final ModConfigSpec.IntValue MINIMUM_BRIDGE_SPAN = BUILDER
+            .comment("橋として整形する連続水域の最小長")
+            .defineInRange("minimumBridgeSpan", 3, 2, 64);
+
+    public static final ModConfigSpec.IntValue BRIDGE_PILLAR_SPACING = BUILDER
+            .comment("橋脚同士のおおよその間隔")
+            .defineInRange("bridgePillarSpacing", 8, 2, 64);
+
+    public static final ModConfigSpec.IntValue MAXIMUM_BRIDGE_PILLAR_DEPTH = BUILDER
+            .comment("橋脚を設置する水深の上限")
+            .defineInRange("maximumBridgePillarDepth", 24, 1, 128);
+
     public static final ModConfigSpec SPEC = BUILDER.build();
 
     private MuraMusubiConfig() {

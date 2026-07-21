@@ -7,11 +7,16 @@ import io.github.seia0423.muramusubi.persistence.RoadNetworkSavedData;
 import io.github.seia0423.muramusubi.road.GridPoint;
 import io.github.seia0423.muramusubi.road.RoadConnection;
 import io.github.seia0423.muramusubi.road.RoadPlan;
+import io.github.seia0423.muramusubi.road.RoadTerrainDesign;
+import io.github.seia0423.muramusubi.road.TerrainSample;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BiomeTags;
 import net.minecraft.tags.BlockTags;
@@ -43,7 +48,7 @@ public final class RoadBuildService {
         int usableClearance = Math.min(configuredClearance, Math.max(0, (plan.centerLine().size() - 1) / 4));
         int endIndex = plan.centerLine().size() - usableClearance;
         List<GridPoint> buildableCenterLine = plan.centerLine().subList(usableClearance, endIndex);
-        List<RoadBuildOperation> operations = createOperations(buildableCenterLine, width, style, palette);
+        List<RoadBuildOperation> operations = createOperations(level, buildableCenterLine, width, style, palette);
         if (!savedData.queueRoad(connection, operations)) {
             return new EnqueueResult(EnqueueStatus.DUPLICATE, 0);
         }
@@ -70,51 +75,210 @@ public final class RoadBuildService {
         }
     }
 
-    private static List<RoadBuildOperation> createOperations(List<GridPoint> centerLine,
-            int width, RoadStyle style, int palette) {
+    private static List<RoadBuildOperation> createOperations(ServerLevel level,
+            List<GridPoint> centerLine, int width, RoadStyle style, int palette) {
+        MinecraftTerrainSampler terrainSampler = new MinecraftTerrainSampler(level);
+        List<TerrainSample> centerSamples = centerLine.stream()
+                .map(point -> terrainSampler.sample(point.x(), point.z()))
+                .toList();
+        List<RoadTerrainDesign.BridgeSpan> bridgeSpans = RoadTerrainDesign.bridgeSpans(
+                centerSamples, MuraMusubiConfig.MINIMUM_BRIDGE_SPAN.getAsInt());
+        Set<Integer> bridgeIndexes = new HashSet<>();
+        int[] bridgeDeckY = new int[centerLine.size()];
+        for (RoadTerrainDesign.BridgeSpan span : bridgeSpans) {
+            int heightSum = 0;
+            for (int index = span.firstIndex(); index <= span.lastIndex(); index++) {
+                bridgeIndexes.add(index);
+                heightSum += centerSamples.get(index).surfaceY();
+            }
+            int averageHeight = Math.round((float) heightSum / span.length());
+            for (int index = span.firstIndex(); index <= span.lastIndex(); index++) {
+                bridgeDeckY[index] = averageHeight;
+            }
+        }
+
         List<RoadBuildOperation> operations = new ArrayList<>();
         RoadBuildOperation.Kind roadKind = style == RoadStyle.ARTIFICIAL
                 ? RoadBuildOperation.Kind.ROAD_ARTIFICIAL
                 : RoadBuildOperation.Kind.ROAD_NATURAL;
-        for (GridPoint point : expandWidth(centerLine, width).values()) {
-            operations.add(new RoadBuildOperation(point, roadKind, 0, palette));
+        Map<Long, RoadBuildOperation> surfaceOperations = new LinkedHashMap<>();
+        for (int index = 0; index < centerLine.size(); index++) {
+            boolean bridge = bridgeIndexes.contains(index);
+            int surfaceWidth = bridge ? width + 2 : width;
+            for (GridPoint point : expandAt(centerLine, index, surfaceWidth).values()) {
+                RoadBuildOperation operation;
+                if (bridge) {
+                    int localSurfaceY = terrainSampler.sample(point.x(), point.z()).surfaceY();
+                    operation = new RoadBuildOperation(
+                            point, RoadBuildOperation.Kind.BRIDGE_DECK,
+                            bridgeDeckY[index] - localSurfaceY, palette);
+                    surfaceOperations.put(hash(point.x(), point.z()), operation);
+                } else {
+                    operation = new RoadBuildOperation(point, roadKind, 0, palette);
+                    surfaceOperations.putIfAbsent(hash(point.x(), point.z()), operation);
+                }
+            }
         }
+        operations.addAll(surfaceOperations.values());
+
+        if (MuraMusubiConfig.SMOOTH_ROAD_SLOPES.getAsBoolean()) {
+            addSlopeOperations(
+                    operations, centerLine, centerSamples, bridgeIndexes,
+                    terrainSampler, width, style, palette);
+        }
+        addBridgeStructures(
+                operations, level, centerLine, bridgeSpans,
+                bridgeDeckY, terrainSampler,
+                new HashSet<>(surfaceOperations.keySet()), width);
         if (MuraMusubiConfig.PLACE_ROAD_DECORATIONS.getAsBoolean()) {
-            addDecorations(operations, centerLine, width, style);
+            addDecorations(operations, centerLine, bridgeIndexes, width, style);
         }
         return operations;
     }
 
-    private static Map<Long, GridPoint> expandWidth(List<GridPoint> centerLine, int width) {
+    private static Map<Long, GridPoint> expandAt(List<GridPoint> centerLine, int index, int width) {
         int firstOffset = -(width / 2);
         int lastOffset = firstOffset + width - 1;
         Map<Long, GridPoint> unique = new LinkedHashMap<>();
-        for (int index = 0; index < centerLine.size(); index++) {
-            GridPoint center = centerLine.get(index);
-            GridPoint previous = centerLine.get(Math.max(0, index - 1));
-            GridPoint next = centerLine.get(Math.min(centerLine.size() - 1, index + 1));
-            int dx = next.x() - previous.x();
-            int dz = next.z() - previous.z();
+        GridPoint center = centerLine.get(index);
+        GridPoint previous = centerLine.get(Math.max(0, index - 1));
+        GridPoint next = centerLine.get(Math.min(centerLine.size() - 1, index + 1));
+        int dx = next.x() - previous.x();
+        int dz = next.z() - previous.z();
 
-            for (int offset = firstOffset; offset <= lastOffset; offset++) {
-                if (dx != 0 && dz != 0) {
-                    add(unique, center.x() + offset, center.z());
-                    add(unique, center.x(), center.z() + offset);
-                } else if (Math.abs(dx) >= Math.abs(dz)) {
-                    add(unique, center.x(), center.z() + offset);
-                } else {
-                    add(unique, center.x() + offset, center.z());
-                }
+        for (int offset = firstOffset; offset <= lastOffset; offset++) {
+            if (dx != 0 && dz != 0) {
+                add(unique, center.x() + offset, center.z());
+                add(unique, center.x(), center.z() + offset);
+            } else if (Math.abs(dx) >= Math.abs(dz)) {
+                add(unique, center.x(), center.z() + offset);
+            } else {
+                add(unique, center.x() + offset, center.z());
             }
         }
         return unique;
     }
 
+    private static void addSlopeOperations(List<RoadBuildOperation> operations,
+            List<GridPoint> centerLine, List<TerrainSample> centerSamples,
+            Set<Integer> bridgeIndexes, MinecraftTerrainSampler terrainSampler,
+            int width, RoadStyle style, int palette) {
+        Map<Long, RoadBuildOperation> slopeOperations = new LinkedHashMap<>();
+        for (RoadTerrainDesign.SlopeTransition transition
+                : RoadTerrainDesign.slopeTransitions(centerSamples)) {
+            if (bridgeIndexes.contains(transition.lowerIndex())
+                    || bridgeIndexes.contains(transition.higherIndex())) {
+                continue;
+            }
+            GridPoint lower = centerLine.get(transition.lowerIndex());
+            GridPoint higher = centerLine.get(transition.higherIndex());
+            int stepX = Integer.signum(higher.x() - lower.x());
+            int stepZ = Integer.signum(higher.z() - lower.z());
+            int direction = directionCode(stepX, stepZ);
+            for (GridPoint point : expandAt(centerLine, transition.lowerIndex(), width).values()) {
+                TerrainSample lowerSample = terrainSampler.sample(point.x(), point.z());
+                TerrainSample higherSample = terrainSampler.sample(point.x() + stepX, point.z() + stepZ);
+                if (higherSample.surfaceY() - lowerSample.surfaceY() != 1) {
+                    continue;
+                }
+                RoadBuildOperation operation = style == RoadStyle.ARTIFICIAL
+                        ? new RoadBuildOperation(
+                                point, RoadBuildOperation.Kind.SLOPE_STAIR,
+                                1, palette * 4 + direction)
+                        : new RoadBuildOperation(
+                                point, RoadBuildOperation.Kind.SLOPE_SLAB,
+                                1, palette);
+                slopeOperations.putIfAbsent(hash(point.x(), point.z()), operation);
+            }
+        }
+        operations.addAll(slopeOperations.values());
+    }
+
+    private static void addBridgeStructures(List<RoadBuildOperation> operations,
+            ServerLevel level, List<GridPoint> centerLine,
+            List<RoadTerrainDesign.BridgeSpan> spans, int[] bridgeDeckY,
+            MinecraftTerrainSampler terrainSampler, Set<Long> deckPositions,
+            int roadWidth) {
+        Map<Long, RoadBuildOperation> connectorDecks = new LinkedHashMap<>();
+        Map<Long, RoadBuildOperation> rails = new LinkedHashMap<>();
+        Set<BlockPos> pillarBlocks = new HashSet<>();
+        int bridgeWidth = roadWidth + 2;
+        int firstSideOffset = -(bridgeWidth / 2);
+        int lastSideOffset = firstSideOffset + bridgeWidth - 1;
+        int pillarSpacing = MuraMusubiConfig.BRIDGE_PILLAR_SPACING.getAsInt();
+        int maximumDepth = MuraMusubiConfig.MAXIMUM_BRIDGE_PILLAR_DEPTH.getAsInt();
+
+        for (RoadTerrainDesign.BridgeSpan span : spans) {
+            for (int index = span.firstIndex(); index <= span.lastIndex(); index++) {
+                GridPoint center = centerLine.get(index);
+                int[] normal = sideNormal(centerLine, index);
+                for (int sideOffset : new int[] {firstSideOffset, lastSideOffset}) {
+                    GridPoint side = new GridPoint(
+                            center.x() + normal[0] * sideOffset,
+                            center.z() + normal[1] * sideOffset);
+                    List<GridPoint> railSegment = List.of(side);
+                    if (index > span.firstIndex()) {
+                        GridPoint previousCenter = centerLine.get(index - 1);
+                        int[] previousNormal = sideNormal(centerLine, index - 1);
+                        GridPoint previousSide = new GridPoint(
+                                previousCenter.x() + previousNormal[0] * sideOffset,
+                                previousCenter.z() + previousNormal[1] * sideOffset);
+                        railSegment = orthogonalSegment(previousSide, side);
+                    }
+                    for (GridPoint railPoint : railSegment) {
+                        int railSurfaceY = terrainSampler.sample(railPoint.x(), railPoint.z()).surfaceY();
+                        long railKey = hash(railPoint.x(), railPoint.z());
+                        if (deckPositions.add(railKey)) {
+                            connectorDecks.put(
+                                    railKey,
+                                    new RoadBuildOperation(
+                                            railPoint, RoadBuildOperation.Kind.BRIDGE_DECK,
+                                            bridgeDeckY[index] - railSurfaceY, 0));
+                        }
+                        rails.putIfAbsent(
+                                railKey,
+                                new RoadBuildOperation(
+                                        railPoint, RoadBuildOperation.Kind.BRIDGE_RAIL,
+                                        bridgeDeckY[index] + 1 - railSurfaceY, 0));
+                    }
+
+                    boolean pillarIndex = (index - span.firstIndex()) % pillarSpacing == 0
+                            || index == span.lastIndex();
+                    if (!pillarIndex) {
+                        continue;
+                    }
+                    int floorY = oceanFloorY(level, side);
+                    int depth = bridgeDeckY[index] - floorY - 1;
+                    if (depth < 1 || depth > maximumDepth) {
+                        continue;
+                    }
+                    for (int y = floorY + 1; y < bridgeDeckY[index]; y++) {
+                        pillarBlocks.add(new BlockPos(side.x(), y, side.z()));
+                    }
+                }
+            }
+        }
+
+        operations.addAll(connectorDecks.values());
+        operations.addAll(rails.values());
+        for (BlockPos pillar : pillarBlocks) {
+            int localSurfaceY = terrainSampler.sample(pillar.getX(), pillar.getZ()).surfaceY();
+            operations.add(new RoadBuildOperation(
+                    new GridPoint(pillar.getX(), pillar.getZ()),
+                    RoadBuildOperation.Kind.BRIDGE_PILLAR,
+                    pillar.getY() - localSurfaceY, 0));
+        }
+    }
+
     private static void addDecorations(List<RoadBuildOperation> operations,
-            List<GridPoint> centerLine, int width, RoadStyle style) {
+            List<GridPoint> centerLine, Set<Integer> bridgeIndexes,
+            int width, RoadStyle style) {
         int spacing = MuraMusubiConfig.DECORATION_SPACING.getAsInt();
         int sideDistance = width / 2 + 2;
         for (int index = spacing; index < centerLine.size() - spacing; index += spacing) {
+            if (bridgeIndexes.contains(index)) {
+                continue;
+            }
             GridPoint previous = centerLine.get(index - 1);
             GridPoint next = centerLine.get(index + 1);
             int directionX = Integer.signum(next.x() - previous.x());
@@ -148,6 +312,27 @@ public final class RoadBuildService {
         BlockPos surfacePos = new BlockPos(point.x(), surfaceY, point.z());
         switch (operation.kind()) {
             case ROAD_ARTIFICIAL, ROAD_NATURAL -> placeRoadSurface(level, surfacePos, operation);
+            case SLOPE_STAIR -> placeSlopeBlock(
+                    level,
+                    surfacePos.above(operation.verticalOffset()),
+                    selectArtificialStair(operation.palette() / 4).defaultBlockState()
+                            .setValue(
+                                    BlockStateProperties.HORIZONTAL_FACING,
+                                    directionFromCode(operation.palette())));
+            case SLOPE_SLAB -> placeSlopeBlock(
+                    level,
+                    surfacePos.above(operation.verticalOffset()),
+                    selectNaturalSlab(operation.palette()).defaultBlockState());
+            case BRIDGE_DECK -> placeBridgeDeck(
+                    level, surfacePos.above(operation.verticalOffset()));
+            case BRIDGE_RAIL -> placeFence(
+                    level,
+                    surfacePos.above(operation.verticalOffset()),
+                    selectFence(level, surfacePos).defaultBlockState());
+            case BRIDGE_PILLAR -> placeBridgePillar(
+                    level,
+                    surfacePos.above(operation.verticalOffset()),
+                    selectBridgeSupport(level, surfacePos).defaultBlockState());
             case FENCE -> placeFence(
                     level, surfacePos.above(operation.verticalOffset()), selectFence(level, surfacePos).defaultBlockState());
             case TORCH -> placeStandingDecoration(
@@ -170,6 +355,28 @@ public final class RoadBuildService {
                 : selectLandMaterial(operation).defaultBlockState();
         level.setBlock(surfacePos, replacement, Block.UPDATE_ALL);
         clearNaturalObstruction(level, surfacePos.above());
+    }
+
+    private static void placeSlopeBlock(ServerLevel level, BlockPos target, BlockState state) {
+        if (canReplaceDecoration(level.getBlockState(target))) {
+            level.setBlock(target, state, Block.UPDATE_ALL);
+        }
+    }
+
+    private static void placeBridgeDeck(ServerLevel level, BlockPos target) {
+        BlockState existing = level.getBlockState(target);
+        if (!canReplaceBridgeDeck(existing)) {
+            return;
+        }
+        level.setBlock(target, selectPlanks(level, target).defaultBlockState(), Block.UPDATE_ALL);
+        clearNaturalObstruction(level, target.above());
+    }
+
+    private static void placeBridgePillar(ServerLevel level, BlockPos target, BlockState state) {
+        BlockState existing = level.getBlockState(target);
+        if (existing.isAir() || !existing.getFluidState().isEmpty() || existing.canBeReplaced()) {
+            level.setBlock(target, state, Block.UPDATE_ALL);
+        }
     }
 
     private static void placeFence(ServerLevel level, BlockPos target, BlockState state) {
@@ -202,6 +409,16 @@ public final class RoadBuildService {
 
     private static boolean canReplaceDecoration(BlockState existing) {
         return existing.isAir() || existing.canBeReplaced() || existing.is(BlockTags.LEAVES);
+    }
+
+    private static boolean canReplaceBridgeDeck(BlockState existing) {
+        return !existing.is(Blocks.BEDROCK)
+                && !existing.is(Blocks.PACKED_ICE)
+                && !existing.is(Blocks.ICE)
+                && !existing.is(Blocks.BLUE_ICE)
+                && !existing.is(BlockTags.LOGS)
+                && !existing.is(BlockTags.FENCES)
+                && !existing.is(BlockTags.PLANKS);
     }
 
     private static boolean canReplaceRoadSurface(BlockState existing) {
@@ -262,6 +479,22 @@ public final class RoadBuildService {
         return Blocks.OAK_FENCE;
     }
 
+    private static Block selectArtificialStair(int palette) {
+        return switch (Math.floorMod(palette, 3)) {
+            case 0 -> Blocks.MUD_BRICK_STAIRS;
+            case 1 -> Blocks.POLISHED_ANDESITE_STAIRS;
+            default -> Blocks.STONE_BRICK_STAIRS;
+        };
+    }
+
+    private static Block selectNaturalSlab(int palette) {
+        return switch (Math.floorMod(palette, 3)) {
+            case 0 -> Blocks.MUD_BRICK_SLAB;
+            case 1 -> Blocks.COBBLESTONE_SLAB;
+            default -> Blocks.STONE_SLAB;
+        };
+    }
+
     private static Block selectPlanks(ServerLevel level, BlockPos pos) {
         var biome = level.getBiome(pos);
         if (biome.is(BiomeTags.IS_JUNGLE)) {
@@ -276,11 +509,72 @@ public final class RoadBuildService {
         return Blocks.OAK_PLANKS;
     }
 
+    private static Block selectBridgeSupport(ServerLevel level, BlockPos pos) {
+        var biome = level.getBiome(pos);
+        if (biome.is(BiomeTags.IS_JUNGLE)) {
+            return Blocks.JUNGLE_LOG;
+        }
+        if (biome.is(BiomeTags.IS_SAVANNA)) {
+            return Blocks.ACACIA_LOG;
+        }
+        if (biome.is(BiomeTags.IS_TAIGA)) {
+            return Blocks.SPRUCE_LOG;
+        }
+        return Blocks.OAK_LOG;
+    }
+
     private static int surfaceY(ServerLevel level, GridPoint point) {
         var chunkSource = level.getChunkSource();
         return chunkSource.getGenerator().getBaseHeight(
                 point.x(), point.z(), Heightmap.Types.WORLD_SURFACE_WG,
                 level, chunkSource.randomState()) - 1;
+    }
+
+    private static int oceanFloorY(ServerLevel level, GridPoint point) {
+        var chunkSource = level.getChunkSource();
+        return chunkSource.getGenerator().getBaseHeight(
+                point.x(), point.z(), Heightmap.Types.OCEAN_FLOOR_WG,
+                level, chunkSource.randomState()) - 1;
+    }
+
+    private static int directionCode(int stepX, int stepZ) {
+        if (Math.abs(stepX) >= Math.abs(stepZ)) {
+            return stepX >= 0 ? 1 : 3;
+        }
+        return stepZ >= 0 ? 2 : 0;
+    }
+
+    private static Direction directionFromCode(int encodedPalette) {
+        return switch (Math.floorMod(encodedPalette, 4)) {
+            case 0 -> Direction.NORTH;
+            case 1 -> Direction.EAST;
+            case 2 -> Direction.SOUTH;
+            default -> Direction.WEST;
+        };
+    }
+
+    private static int[] sideNormal(List<GridPoint> centerLine, int index) {
+        GridPoint previous = centerLine.get(Math.max(0, index - 1));
+        GridPoint next = centerLine.get(Math.min(centerLine.size() - 1, index + 1));
+        int dx = next.x() - previous.x();
+        int dz = next.z() - previous.z();
+        return Math.abs(dx) >= Math.abs(dz) ? new int[] {0, 1} : new int[] {1, 0};
+    }
+
+    private static List<GridPoint> orthogonalSegment(GridPoint start, GridPoint end) {
+        List<GridPoint> points = new ArrayList<>();
+        int x = start.x();
+        int z = start.z();
+        points.add(start);
+        while (x != end.x()) {
+            x += Integer.signum(end.x() - x);
+            points.add(new GridPoint(x, z));
+        }
+        while (z != end.z()) {
+            z += Integer.signum(end.z() - z);
+            points.add(new GridPoint(x, z));
+        }
+        return points;
     }
 
     private static RoadStyle selectStyle(RoadConnection connection) {

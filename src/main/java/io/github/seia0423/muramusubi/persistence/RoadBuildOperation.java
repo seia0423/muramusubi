@@ -28,6 +28,11 @@ public record RoadBuildOperation(GridPoint point, Kind kind, int verticalOffset,
     public enum Kind {
         ROAD_ARTIFICIAL,
         ROAD_NATURAL,
+        SLOPE_STAIR,
+        SLOPE_SLAB,
+        BRIDGE_DECK,
+        BRIDGE_RAIL,
+        BRIDGE_PILLAR,
         FENCE,
         TORCH,
         HANGING_LANTERN

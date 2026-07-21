@@ -36,7 +36,7 @@ class RoadNetworkSavedDataTest {
         original.queueRoad(connection, List.of(
                 roadAt(0, 0),
                 new RoadBuildOperation(new GridPoint(1, 0), RoadBuildOperation.Kind.FENCE, 1, 0),
-                new RoadBuildOperation(new GridPoint(2, 0), RoadBuildOperation.Kind.HANGING_LANTERN, 2, 0)));
+                new RoadBuildOperation(new GridPoint(2, 0), RoadBuildOperation.Kind.BRIDGE_PILLAR, -4, 0)));
         original.pollNextBuildStep();
 
         var encoded = RoadNetworkSavedData.CODEC.encodeStart(JsonOps.INSTANCE, original).getOrThrow();
@@ -48,6 +48,10 @@ class RoadNetworkSavedDataTest {
         assertEquals(List.of(connection), restored.connections());
         assertEquals(2, restored.queuedBlockCount());
         assertEquals(1, restored.pendingRoadCount());
+        RoadBuildOperation restoredPillar = restored.buildTasks().getFirst()
+                .remainingOperations().getLast();
+        assertEquals(RoadBuildOperation.Kind.BRIDGE_PILLAR, restoredPillar.kind());
+        assertEquals(-4, restoredPillar.verticalOffset());
     }
 
     @Test
