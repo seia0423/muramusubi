@@ -17,6 +17,14 @@ public final class MuraMusubiConfig {
             .comment("1ティックに変更する道路ブロック数の上限")
             .defineInRange("maxBlocksPerTick", 128, 1, 4096);
 
+    public static final ModConfigSpec.IntValue MAX_PATHFINDING_STEPS = BUILDER
+            .comment("道路1本のA*経路探索で調べる地点数の上限")
+            .defineInRange("maxPathfindingSteps", 50_000, 1_000, 1_000_000);
+
+    public static final ModConfigSpec.IntValue ENDPOINT_CLEARANCE = BUILDER
+            .comment("村の建物を壊さないため、道路の始点・終点から敷設しない距離")
+            .defineInRange("endpointClearance", 24, 0, 128);
+
     public static final ModConfigSpec SPEC = BUILDER.build();
 
     private MuraMusubiConfig() {

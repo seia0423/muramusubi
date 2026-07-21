@@ -3,6 +3,7 @@ package io.github.seia0423.muramusubi;
 import com.mojang.logging.LogUtils;
 import io.github.seia0423.muramusubi.command.MuraMusubiCommands;
 import io.github.seia0423.muramusubi.config.MuraMusubiConfig;
+import io.github.seia0423.muramusubi.world.RoadBuildService;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
@@ -18,6 +19,8 @@ public final class MuraMusubi {
     public MuraMusubi(IEventBus modEventBus, ModContainer modContainer) {
         modContainer.registerConfig(ModConfig.Type.COMMON, MuraMusubiConfig.SPEC);
         NeoForge.EVENT_BUS.addListener(MuraMusubiCommands::register);
+        NeoForge.EVENT_BUS.addListener(RoadBuildService::tick);
+        NeoForge.EVENT_BUS.addListener(RoadBuildService::clear);
         LOGGER.info("Mura Musubi を読み込みました");
     }
 }
