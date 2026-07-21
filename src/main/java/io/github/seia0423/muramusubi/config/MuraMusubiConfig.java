@@ -57,6 +57,14 @@ public final class MuraMusubiConfig {
             .comment("1ブロック段差に階段またはハーフブロックを置く")
             .define("smoothRoadSlopes", true);
 
+    public static final ModConfigSpec.BooleanValue GRADE_ROAD_TERRAIN = BUILDER
+            .comment("急な道路で切土・盛土を行い、中心線の高低差を緩和する")
+            .define("gradeRoadTerrain", true);
+
+    public static final ModConfigSpec.IntValue MAXIMUM_TERRAIN_ADJUSTMENT = BUILDER
+            .comment("切土・盛土で地表を上下させる最大ブロック数")
+            .defineInRange("maximumTerrainAdjustment", 3, 0, 8);
+
     public static final ModConfigSpec.IntValue MINIMUM_BRIDGE_SPAN = BUILDER
             .comment("橋として整形する連続水域の最小長")
             .defineInRange("minimumBridgeSpan", 3, 2, 64);

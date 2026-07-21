@@ -30,11 +30,14 @@ public record RoadBuildOperation(GridPoint point, Kind kind, int verticalOffset,
         ROAD_NATURAL,
         SLOPE_STAIR,
         SLOPE_SLAB,
+        TERRAIN_FILL,
+        TERRAIN_CLEAR,
         BRIDGE_DECK,
         BRIDGE_RAIL,
         BRIDGE_PILLAR,
         FENCE,
         TORCH,
+        LANTERN,
         HANGING_LANTERN
     }
 }

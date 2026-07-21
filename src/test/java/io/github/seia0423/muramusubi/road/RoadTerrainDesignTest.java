@@ -44,6 +44,30 @@ class RoadTerrainDesignTest {
                 () -> RoadTerrainDesign.bridgeSpans(List.of(), 0));
     }
 
+    @Test
+    void gradesThreeBlockRiseIntoWalkableProfile() {
+        List<TerrainSample> samples = List.of(land(64), land(64), land(67), land(67));
+
+        assertEquals(
+                List.of(64, 65, 66, 67),
+                RoadTerrainDesign.gradeSurfaceHeights(samples, 3));
+    }
+
+    @Test
+    void limitsCutAndFillOnExtremeCliff() {
+        List<TerrainSample> samples = List.of(land(64), land(72));
+
+        assertEquals(
+                List.of(67, 69),
+                RoadTerrainDesign.gradeSurfaceHeights(samples, 3));
+    }
+
+    @Test
+    void rejectsNegativeMaximumAdjustment() {
+        assertThrows(IllegalArgumentException.class,
+                () -> RoadTerrainDesign.gradeSurfaceHeights(List.of(), -1));
+    }
+
     private static TerrainSample land(int y) {
         return new TerrainSample(y, false);
     }

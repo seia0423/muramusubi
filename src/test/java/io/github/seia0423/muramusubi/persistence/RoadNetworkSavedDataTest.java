@@ -35,7 +35,7 @@ class RoadNetworkSavedDataTest {
         original.rememberVillage(second);
         original.queueRoad(connection, List.of(
                 roadAt(0, 0),
-                new RoadBuildOperation(new GridPoint(1, 0), RoadBuildOperation.Kind.FENCE, 1, 0),
+                new RoadBuildOperation(new GridPoint(1, 0), RoadBuildOperation.Kind.TERRAIN_FILL, 1, 0),
                 new RoadBuildOperation(new GridPoint(2, 0), RoadBuildOperation.Kind.BRIDGE_PILLAR, -4, 0)));
         original.pollNextBuildStep();
 
@@ -48,6 +48,9 @@ class RoadNetworkSavedDataTest {
         assertEquals(List.of(connection), restored.connections());
         assertEquals(2, restored.queuedBlockCount());
         assertEquals(1, restored.pendingRoadCount());
+        assertEquals(
+                RoadBuildOperation.Kind.TERRAIN_FILL,
+                restored.buildTasks().getFirst().remainingOperations().getFirst().kind());
         RoadBuildOperation restoredPillar = restored.buildTasks().getFirst()
                 .remainingOperations().getLast();
         assertEquals(RoadBuildOperation.Kind.BRIDGE_PILLAR, restoredPillar.kind());

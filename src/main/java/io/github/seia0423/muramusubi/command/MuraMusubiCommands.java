@@ -93,6 +93,7 @@ public final class MuraMusubiCommands {
                         + ", 自然道=" + MuraMusubiConfig.ALLOW_NATURAL_ROADS.getAsBoolean()
                         + ", 装飾=" + MuraMusubiConfig.PLACE_ROAD_DECORATIONS.getAsBoolean()
                         + ", 斜面補正=" + MuraMusubiConfig.SMOOTH_ROAD_SLOPES.getAsBoolean()
+                        + ", 切土盛土=" + MuraMusubiConfig.GRADE_ROAD_TERRAIN.getAsBoolean()
                         + ", 最小橋長=" + MuraMusubiConfig.MINIMUM_BRIDGE_SPAN.getAsInt()
                         + ", 1tick上限=" + MuraMusubiConfig.MAX_BLOCKS_PER_TICK.getAsInt()
                         + ", 発見済み村=" + savedData.villages().size()
