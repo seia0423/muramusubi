@@ -220,7 +220,7 @@ public final class RoadBuildService {
             GridPoint higher = centerLine.get(transition.higherIndex());
             int stepX = Integer.signum(higher.x() - lower.x());
             int stepZ = Integer.signum(higher.z() - lower.z());
-            int direction = directionCode(stepX, stepZ);
+            RoadTerrainDesign.SlopeDirection direction = RoadTerrainDesign.slopeDirection(lower, higher);
             for (GridPoint point : expandAt(centerLine, transition.lowerIndex(), width).values()) {
                 GridPoint higherPoint = new GridPoint(point.x() + stepX, point.z() + stepZ);
                 RoadBuildOperation lowerRoad = surfaceOperations.get(hash(point.x(), point.z()));
@@ -238,9 +238,14 @@ public final class RoadBuildService {
                     continue;
                 }
                 RoadBuildOperation operation = style == RoadStyle.ARTIFICIAL
+                        && direction != RoadTerrainDesign.SlopeDirection.DIAGONAL
                         ? new RoadBuildOperation(
                                 point, RoadBuildOperation.Kind.SLOPE_STAIR,
-                                lowerRoad.verticalOffset() + 1, palette * 4 + direction)
+                                lowerRoad.verticalOffset() + 1, palette * 4 + direction.code())
+                        : style == RoadStyle.ARTIFICIAL
+                        ? new RoadBuildOperation(
+                                point, RoadBuildOperation.Kind.SLOPE_ARTIFICIAL_SLAB,
+                                lowerRoad.verticalOffset() + 1, palette)
                         : new RoadBuildOperation(
                                 point, RoadBuildOperation.Kind.SLOPE_SLAB,
                                 lowerRoad.verticalOffset() + 1, palette);
@@ -398,6 +403,10 @@ public final class RoadBuildService {
                     level,
                     surfacePos.above(operation.verticalOffset()),
                     selectNaturalSlab(operation.palette()).defaultBlockState());
+            case SLOPE_ARTIFICIAL_SLAB -> placeSlopeBlock(
+                    level,
+                    surfacePos.above(operation.verticalOffset()),
+                    selectArtificialSlab(operation.palette()).defaultBlockState());
             case TERRAIN_FILL -> placeTerrainFill(
                     level,
                     surfacePos.above(operation.verticalOffset()),
@@ -457,7 +466,10 @@ public final class RoadBuildService {
     }
 
     private static void placeSlopeBlock(ServerLevel level, BlockPos target, BlockState state) {
-        if (canReplaceDecoration(level.getBlockState(target))) {
+        BlockState existing = level.getBlockState(target);
+        if (canReplaceDecoration(existing)
+                || existing.is(BlockTags.STAIRS)
+                || existing.is(BlockTags.SLABS)) {
             level.setBlock(target, state, Block.UPDATE_ALL);
         }
     }
@@ -598,6 +610,14 @@ public final class RoadBuildService {
         };
     }
 
+    private static Block selectArtificialSlab(int palette) {
+        return switch (Math.floorMod(palette, 3)) {
+            case 0 -> Blocks.MUD_BRICK_SLAB;
+            case 1 -> Blocks.POLISHED_ANDESITE_SLAB;
+            default -> Blocks.STONE_BRICK_SLAB;
+        };
+    }
+
     private static Block selectNaturalSlab(int palette) {
         return switch (Math.floorMod(palette, 3)) {
             case 0 -> Blocks.MUD_BRICK_SLAB;
@@ -654,13 +674,6 @@ public final class RoadBuildService {
         return chunkSource.getGenerator().getBaseHeight(
                 point.x(), point.z(), Heightmap.Types.OCEAN_FLOOR_WG,
                 level, chunkSource.randomState()) - 1;
-    }
-
-    private static int directionCode(int stepX, int stepZ) {
-        if (Math.abs(stepX) >= Math.abs(stepZ)) {
-            return stepX >= 0 ? 1 : 3;
-        }
-        return stepZ >= 0 ? 2 : 0;
     }
 
     private static Direction directionFromCode(int encodedPalette) {

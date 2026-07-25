@@ -45,6 +45,24 @@ public final class RoadTerrainDesign {
         return List.copyOf(transitions);
     }
 
+    public static SlopeDirection slopeDirection(GridPoint lower, GridPoint higher) {
+        int stepX = Integer.signum(higher.x() - lower.x());
+        int stepZ = Integer.signum(higher.z() - lower.z());
+        if (stepX == 0 && stepZ == 0) {
+            throw new IllegalArgumentException("Slope endpoints must be different");
+        }
+        if (stepX != 0 && stepZ != 0) {
+            return SlopeDirection.DIAGONAL;
+        }
+        if (stepX > 0) {
+            return SlopeDirection.EAST;
+        }
+        if (stepX < 0) {
+            return SlopeDirection.WEST;
+        }
+        return stepZ > 0 ? SlopeDirection.SOUTH : SlopeDirection.NORTH;
+    }
+
     public static List<Integer> gradeSurfaceHeights(
             List<TerrainSample> samples, int maximumAdjustment) {
         if (maximumAdjustment < 0) {
@@ -96,5 +114,26 @@ public final class RoadTerrainDesign {
     }
 
     public record SlopeTransition(int lowerIndex, int higherIndex) {
+    }
+
+    public enum SlopeDirection {
+        NORTH(0),
+        EAST(1),
+        SOUTH(2),
+        WEST(3),
+        DIAGONAL(-1);
+
+        private final int code;
+
+        SlopeDirection(int code) {
+            this.code = code;
+        }
+
+        public int code() {
+            if (this == DIAGONAL) {
+                throw new IllegalStateException("Diagonal slopes do not have a stair facing");
+            }
+            return code;
+        }
     }
 }

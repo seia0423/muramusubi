@@ -68,6 +68,34 @@ class RoadTerrainDesignTest {
                 () -> RoadTerrainDesign.gradeSurfaceHeights(List.of(), -1));
     }
 
+    @Test
+    void pointsCardinalStairsFromLowerGroundTowardHigherGround() {
+        GridPoint lower = new GridPoint(10, 20);
+
+        assertEquals(RoadTerrainDesign.SlopeDirection.NORTH,
+                RoadTerrainDesign.slopeDirection(lower, new GridPoint(10, 19)));
+        assertEquals(RoadTerrainDesign.SlopeDirection.EAST,
+                RoadTerrainDesign.slopeDirection(lower, new GridPoint(11, 20)));
+        assertEquals(RoadTerrainDesign.SlopeDirection.SOUTH,
+                RoadTerrainDesign.slopeDirection(lower, new GridPoint(10, 21)));
+        assertEquals(RoadTerrainDesign.SlopeDirection.WEST,
+                RoadTerrainDesign.slopeDirection(lower, new GridPoint(9, 20)));
+    }
+
+    @Test
+    void marksDiagonalSlopesAsDirectionless() {
+        assertEquals(RoadTerrainDesign.SlopeDirection.DIAGONAL,
+                RoadTerrainDesign.slopeDirection(new GridPoint(10, 20), new GridPoint(11, 19)));
+    }
+
+    @Test
+    void rejectsSlopeDirectionForTheSamePoint() {
+        GridPoint point = new GridPoint(10, 20);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> RoadTerrainDesign.slopeDirection(point, point));
+    }
+
     private static TerrainSample land(int y) {
         return new TerrainSample(y, false);
     }
