@@ -1,0 +1,10 @@
+{
+  "replace": false,
+  "values": [
+    "muramusubi:large_village_plains",
+    "muramusubi:large_village_desert",
+    "muramusubi:large_village_savanna",
+    "muramusubi:large_village_snowy",
+    "muramusubi:large_village_taiga"
+  ]
+}
