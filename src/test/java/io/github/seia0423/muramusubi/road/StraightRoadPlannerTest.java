@@ -45,4 +45,9 @@ class StraightRoadPlannerTest {
                 new GridPoint(2, 0),
                 List.of(new GridPoint(1, 0))));
     }
+
+    @Test
+    void gridSnappingUsesFloorDivisionForNegativeCoordinates() {
+        assertEquals(new GridPoint(-4, -8), new GridPoint(-1, -5).snappedTo(4));
+    }
 }
